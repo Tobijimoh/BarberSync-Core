@@ -144,18 +144,26 @@ BarberSync is a specialized booking engine designed for a two-barber shop enviro
 │ created_at                      │
 │ updated_at                      │
 └─────────────────────────────────┘
-         │
-         │ References
-         ▼
-┌─────────────────────┐
-│  system_settings    │
-├─────────────────────┤
-│ id (PK)             │
-│ setting_key (Unique)│
-│ setting_value       │
-│ description         │
-└─────────────────────┘
+         
+         
+        
+┌─────────────────────────────┐
+│  system_settings            │
+├─────────────────────────────┤
+│ id (PK)                     │
+│ opening_hour (TIME)         │
+│ closing_hour (TIME)         │
+│ slot_duration_minutes (INT) │
+│ booking_window_days (INT)   │
+│ hold_expiry_minutes (INT)   │
+│ barber_accept_hours (INT)   │
+│ updated_at (TIMESTAMP)      │
+└─────────────────────────────┘
 ```
+**Relationship Type:** One-to-Many
+- One barber can have many appointments
+- Each appointment belongs to exactly one barber
+- System settings is a standalone configuration table (no foreign key relationships)
 
 ### Table: `barbers`
 
