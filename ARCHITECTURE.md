@@ -123,8 +123,10 @@ BarberSync is a specialized booking engine designed for a two-barber shop enviro
 │     barbers         │
 ├─────────────────────┤
 │ id (PK)             │──┐
-│ display_name        │  │
-│ is_active           │  │
+│ display_name (Char) │  │
+│ email_address (Char)│  │
+| login_password(Char)|  │
+│ is_active (Bol)     │  │
 │ created_at          │  │
 └─────────────────────┘  │
                          │ 1
