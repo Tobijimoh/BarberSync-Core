@@ -1,5 +1,20 @@
-# BarberSync 
-Digitalizing appointment booking for a barbershop with a focus on zero-friction and privacy..
+<div align="center">
+
+# 💈 BarberSync
+
+### Privacy-First Appointment Booking for Modern Barbershops
+
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/Django-5.0-green.svg)](https://www.djangoproject.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-blue.svg)](https://www.postgresql.org/)
+
+**📅 Zero-Friction Booking** • **🔒 Zero PII Storage** • **⚡ 60-Second Experience**
+
+[Documentation](ARCHITECTURE.md)
+
+---
+
+</div>
 
 ## Tech Stack (Planned)
 - **Backend:** Python 3.12 / Django 6.0
