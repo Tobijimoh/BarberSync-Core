@@ -35,7 +35,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
 
 class CreateAppointmentSerializer(serializers.Serializer):
     """Serializer for creating new appointments"""
-    barber_id = serializers.IntegerField(required=True)
+    barber_id = serializers.UUIDField(required=True)
     slot_datetime = serializers.DateTimeField(required=True)
     
     def validate_barber_id(self, value):

@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.utils import timezone
+from datetime import datetime, timedelta
 
 from .models import Barber, Appointment, SystemSetting
 from .serializers import (
@@ -26,50 +27,16 @@ class BarberViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 class AppointmentViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint for managing appointments
-    
-    POST /api/appointments/ - Create new appointment
-    GET /api/appointments/ - List all appointments
-    GET /api/appointments/{id}/ - Get specific appointment
-    """
     queryset = Appointment.objects.all().select_related('barber')
     serializer_class = AppointmentSerializer
-    permission_classes = [AllowAny]  # Open for now, secure later
+    permission_classes = [AllowAny]
     
     def create(self, request, *args, **kwargs):
-        """
-        Create a new appointment
-        
-        Request body:
-        {
-            "barber_id": 1,
-            "slot_datetime": "2026-03-05T14:00:00Z"
-        }
-        
-        Response (201 Created):
-        {
-            "id": 1,
-            "appointment_ref": "uuid-here",
-            "barber": 1,
-            "barber_name": "Barber A",
-            "slot_datetime": "2026-03-05T14:00:00Z",
-            "status": "PENDING",
-            "source": "WEB",
-            "created_at": "2026-03-01T21:30:00Z",
-            "updated_at": null
-        }
-        """
-        # Use the CreateAppointmentSerializer for validation
         create_serializer = CreateAppointmentSerializer(data=request.data)
         
         if create_serializer.is_valid():
-            # Create the appointment
             appointment = create_serializer.save()
-            
-            # Use the regular serializer to format the response
             response_serializer = AppointmentSerializer(appointment)
-            
             return Response(
                 response_serializer.data,
                 status=status.HTTP_201_CREATED
@@ -80,22 +47,143 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    @action(detail=True, methods=['get'], url_path='by-ref')
-    def get_by_reference(self, request, pk=None):
-        """
-        Get appointment by reference number
-        
-        GET /api/appointments/{ref}/by-ref/
-        """
+    @action(detail=False, methods=['get'], url_path='status/(?P<ref>[^/.]+)')
+    def check_status(self, request, ref=None):
         try:
-            appointment = Appointment.objects.get(appointment_ref=pk)
-            serializer = AppointmentSerializer(appointment)
-            return Response(serializer.data)
+            appointment = Appointment.objects.select_related('barber').get(
+                appointment_ref=ref
+            )
+            
+            return Response({
+                'appointment_ref': str(appointment.appointment_ref),
+                'barber_name': appointment.barber.display_name,
+                'slot_datetime': appointment.slot_datetime,
+                'status': appointment.status,
+                'created_at': appointment.created_at,
+                'can_cancel': appointment.status in ['PENDING', 'CONFIRMED']
+            })
+            
         except Appointment.DoesNotExist:
             return Response(
-                {'error': 'Appointment not found'},
+                {'error': 'Appointment not found. Please check your reference number.'},
                 status=status.HTTP_404_NOT_FOUND
             )
+    
+    @action(detail=False, methods=['delete'], url_path='cancel/(?P<ref>[^/.]+)')
+    def cancel_appointment(self, request, ref=None):
+        try:
+            appointment = Appointment.objects.select_related('barber').get(
+                appointment_ref=ref
+            )
+            
+            if appointment.status in ['CANCELLED', 'EXPIRED']:
+                return Response(
+                    {
+                        'error': f'Appointment is already {appointment.status.lower()}.',
+                        'status': appointment.status
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            previous_status = appointment.status
+            appointment.status = 'CANCELLED'
+            appointment.updated_at = timezone.now()
+            appointment.save()
+            
+            return Response({
+                'message': 'Appointment cancelled successfully.',
+                'appointment_ref': str(appointment.appointment_ref),
+                'previous_status': previous_status,
+                'new_status': 'CANCELLED'
+            })
+            
+        except Appointment.DoesNotExist:
+            return Response(
+                {'error': 'Appointment not found. Please check your reference number.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    @action(detail=False, methods=['get'], url_path='available-slots')
+    def available_slots(self, request):
+        barber_id = request.query_params.get('barber_id')
+        date_str = request.query_params.get('date')
+        
+        if not barber_id:
+            return Response(
+                {'error': 'barber_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not date_str:
+            return Response(
+                {'error': 'date is required (format: YYYY-MM-DD)'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            barber = Barber.objects.get(id=barber_id, is_active=True)
+        except Barber.DoesNotExist:
+            return Response(
+                {'error': 'Barber not found or not active'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        try:
+            query_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return Response(
+                {'error': 'Invalid date format. Use YYYY-MM-DD'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            settings = SystemSetting.objects.first()
+            if not settings:
+                opening_hour = datetime.strptime('08:00', '%H:%M').time()
+                closing_hour = datetime.strptime('20:00', '%H:%M').time()
+                slot_duration = 60
+            else:
+                opening_hour = settings.opening_hour
+                closing_hour = settings.closing_hour
+                slot_duration = int(settings.slot_duration_minutes)
+        except Exception:
+            opening_hour = datetime.strptime('08:00', '%H:%M').time()
+            closing_hour = datetime.strptime('20:00', '%H:%M').time()
+            slot_duration = 60
+        
+        all_slots = []
+        current_time = datetime.combine(query_date, opening_hour)
+        end_time = datetime.combine(query_date, closing_hour)
+        
+        while current_time < end_time:
+            all_slots.append(current_time.time())
+            current_time += timedelta(minutes=slot_duration)
+        
+        booked_appointments = Appointment.objects.filter(
+            barber_id=barber_id,
+            slot_datetime__date=query_date,
+            status__in=['PENDING', 'CONFIRMED']
+        ).values_list('slot_datetime', flat=True)
+        
+        booked_slots = [appt.time() for appt in booked_appointments]
+        
+        available_slots = [
+            slot for slot in all_slots 
+            if slot not in booked_slots
+        ]
+        
+        return Response({
+            'barber': {
+                'id': barber.id,
+                'display_name': barber.display_name
+            },
+            'date': date_str,
+            'available_slots': [slot.strftime('%H:%M:%S') for slot in available_slots],
+            'booked_slots': [slot.strftime('%H:%M:%S') for slot in booked_slots],
+            'total_slots': len(all_slots),
+            'available_count': len(available_slots),
+            'booked_count': len(booked_slots)
+        })
 
 
 class SystemSettingViewSet(viewsets.ReadOnlyModelViewSet):
