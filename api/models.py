@@ -1,8 +1,10 @@
+import uuid
 from django.db import models
+from django.utils import timezone
 
 class Barber(models.Model):
     """Barber profiles"""
-    id = models.BigAutoField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     display_name = models.TextField()
     email_address = models.TextField()
     login_password = models.CharField(max_length=255)
@@ -20,8 +22,8 @@ class Barber(models.Model):
 
 class Appointment(models.Model):
     """Appointment bookings"""
-    id = models.BigAutoField(primary_key=True) 
-    appointment_ref = models.UUIDField(unique=True) 
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    appointment_ref = models.UUIDField(unique=True, default=uuid.uuid4, editable=False)
     barber = models.ForeignKey(Barber, on_delete=models.RESTRICT, db_column='barber_id')
     slot_datetime = models.DateTimeField()
     status = models.TextField()
@@ -39,7 +41,7 @@ class Appointment(models.Model):
 
 class SystemSetting(models.Model):
     """System configuration"""
-    id = models.BigAutoField(primary_key=True)
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     opening_hour = models.TimeField()
     closing_hour = models.TimeField() 
     slot_duration_minutes = models.DecimalField(max_digits=10, decimal_places=2)
