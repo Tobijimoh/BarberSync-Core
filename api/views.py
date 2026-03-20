@@ -184,6 +184,111 @@ class AppointmentViewSet(viewsets.ModelViewSet):
             'available_count': len(available_slots),
             'booked_count': len(booked_slots)
         })
+    
+    @action(detail=False, methods=['get'], url_path='pending')
+    def pending_appointments(self, request):
+        """
+        Get all pending appointments (barber dashboard view)
+        
+        GET /api/appointments/pending/
+        
+        Returns appointments with status='PENDING' ordered by creation date
+        """
+        pending = Appointment.objects.filter(
+            status='PENDING'
+        ).select_related('barber').order_by('-created_at')
+        
+        serializer = AppointmentSerializer(pending, many=True)
+        
+        return Response({
+            'count': pending.count(),
+            'appointments': serializer.data
+        })
+    
+    @action(detail=False, methods=['patch'], url_path='accept/(?P<ref>[^/.]+)')
+    def accept_appointment(self, request, ref=None):
+        """
+        Barber accepts appointment (PENDING → CONFIRMED)
+        
+        PATCH /api/appointments/accept/{ref}/
+        
+        Changes appointment status from PENDING to CONFIRMED
+        """
+        try:
+            appointment = Appointment.objects.select_related('barber').get(
+                appointment_ref=ref
+            )
+            
+            if appointment.status != 'PENDING':
+                return Response(
+                    {
+                        'error': f'Cannot accept appointment. Current status is {appointment.status}.',
+                        'status': appointment.status
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            appointment.status = 'CONFIRMED'
+            appointment.updated_at = timezone.now()
+            appointment.save()
+            
+            return Response({
+                'message': 'Appointment accepted successfully.',
+                'appointment_ref': str(appointment.appointment_ref),
+                'barber_name': appointment.barber.display_name,
+                'slot_datetime': appointment.slot_datetime,
+                'previous_status': 'PENDING',
+                'new_status': 'CONFIRMED'
+            })
+            
+        except Appointment.DoesNotExist:
+            return Response(
+                {'error': 'Appointment not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+    
+    @action(detail=False, methods=['patch'], url_path='decline/(?P<ref>[^/.]+)')
+    def decline_appointment(self, request, ref=None):
+        """
+        Barber declines appointment (PENDING → CANCELLED)
+        
+        PATCH /api/appointments/decline/{ref}/
+        
+        Changes appointment status from PENDING to CANCELLED
+        Releases the time slot for other customers
+        """
+        try:
+            appointment = Appointment.objects.select_related('barber').get(
+                appointment_ref=ref
+            )
+            
+            if appointment.status != 'PENDING':
+                return Response(
+                    {
+                        'error': f'Cannot decline appointment. Current status is {appointment.status}.',
+                        'status': appointment.status
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            appointment.status = 'CANCELLED'
+            appointment.updated_at = timezone.now()
+            appointment.save()
+            
+            return Response({
+                'message': 'Appointment declined.',
+                'appointment_ref': str(appointment.appointment_ref),
+                'barber_name': appointment.barber.display_name,
+                'slot_datetime': appointment.slot_datetime,
+                'previous_status': 'PENDING',
+                'new_status': 'CANCELLED'
+            })
+            
+        except Appointment.DoesNotExist:
+            return Response(
+                {'error': 'Appointment not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
 
 
 class SystemSettingViewSet(viewsets.ReadOnlyModelViewSet):
