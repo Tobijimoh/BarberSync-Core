@@ -2,6 +2,8 @@ from rest_framework import serializers
 from .models import Barber, Appointment, SystemSetting
 import uuid
 from django.utils import timezone
+from datetime import datetime, timedelta
+import pytz
 
 
 class BarberSerializer(serializers.ModelSerializer):
@@ -56,13 +58,46 @@ class CreateAppointmentSerializer(serializers.Serializer):
     
     def validate(self, data):
         """
-        Check if the slot is available (not already booked)
+        Business rules validation (all configurable via SystemSetting):
+        - Check slot availability (no double-booking)
+        - Validate business hours from system_settings
+        - Validate booking window from system_settings
         """
-        # Check if this exact slot is already taken for this barber
+        from datetime import timedelta
+        
+        try:
+            settings = SystemSetting.objects.first()
+            if not settings:
+                raise serializers.ValidationError(
+                    "System settings not configured. Please contact administrator."
+                )
+            
+            opening_hour = settings.opening_hour
+            closing_hour = settings.closing_hour
+            booking_window_days = int(settings.booking_window_days)
+        except SystemSetting.DoesNotExist:
+            raise serializers.ValidationError(
+                "System settings not configured. Please contact administrator."
+            )
+        
+        slot_datetime = data['slot_datetime']
+        slot_time_utc = slot_datetime.astimezone(pytz.utc).time()
+        
+        if slot_time_utc < opening_hour.replace(tzinfo=None) or slot_time_utc >= closing_hour.replace(tzinfo=None):
+            raise serializers.ValidationError({
+                'slot_datetime': f'Appointments can only be booked between {opening_hour.strftime("%H:%M")} and {closing_hour.strftime("%H:%M")}.'
+            })
+        
+        max_booking_date = timezone.now() + timedelta(days=booking_window_days)
+        if slot_datetime > max_booking_date:
+            raise serializers.ValidationError({
+                'slot_datetime': f'Appointments can only be booked up to {booking_window_days} days in advance.'
+            })
+        
         slot_exists = Appointment.objects.filter(
             barber_id=data['barber_id'],
             slot_datetime=data['slot_datetime'],
-            status__in=['PENDING', 'CONFIRMED']  # Only check active appointments
+            status__in=['PENDING', 'CONFIRMED']
         ).exists()
         
         if slot_exists:
@@ -76,16 +111,14 @@ class CreateAppointmentSerializer(serializers.Serializer):
         """
         Create a new appointment with a unique UUID reference
         """
-        # Generate unique UUID for appointment reference
         appointment_ref = uuid.uuid4()
         
-        # Create the appointment
         appointment = Appointment.objects.create(
             appointment_ref=appointment_ref,
             barber_id=validated_data['barber_id'],
             slot_datetime=validated_data['slot_datetime'],
-            status='PENDING',  # New appointments start as PENDING
-            source='WEB',      # Created via web API
+            status='PENDING',
+            source='WEB',
             created_at=timezone.now()
         )
         
