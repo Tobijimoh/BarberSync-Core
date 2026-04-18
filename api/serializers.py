@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import Barber, Appointment, SystemSetting
 import uuid
 from django.utils import timezone
+from django.db import transaction, IntegrityError
 from datetime import datetime, timedelta
 import pytz
 
@@ -111,18 +112,28 @@ class CreateAppointmentSerializer(serializers.Serializer):
         """
         Create a new appointment with a unique UUID reference
         """
-        appointment_ref = uuid.uuid4()
+        try:
+            with transaction.atomic():
+                Appointment.objects.select_for_update().filter(
+                    barber_id=validated_data['barber_id'],
+                    slot_datetime=validated_data['slot_datetime'],
+                    status__in=['PENDING', 'CONFIRMED']
+                ).exists()
+
+                appointment = Appointment.objects.create(
+                    appointment_ref=uuid.uuid4(),
+                    barber_id=validated_data['barber_id'],
+                    slot_datetime=validated_data['slot_datetime'],
+                    status='PENDING',
+                    source='WEB',
+                    created_at=timezone.now()
+                )
+                return appointment
+        except IntegrityError:
+            raise serializers.ValidationError({
+                'slot_datetime': 'This slot was just booked. Please choose another time.'
+            })
         
-        appointment = Appointment.objects.create(
-            appointment_ref=appointment_ref,
-            barber_id=validated_data['barber_id'],
-            slot_datetime=validated_data['slot_datetime'],
-            status='PENDING',
-            source='WEB',
-            created_at=timezone.now()
-        )
-        
-        return appointment
 
 
 class SystemSettingSerializer(serializers.ModelSerializer):
