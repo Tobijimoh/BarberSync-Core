@@ -45,6 +45,7 @@ INSTALLED_APPS = [
 
     # Third-party apps
     'rest_framework',
+    'drf_spectacular',
 
     #Your apps
     'api',
@@ -139,6 +140,15 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.JSONParser',
     ],
     'DEFAULT_PAGINATION_CLASS': None,  # No pagination for now
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+# Swagger/OpenAPI Configuration
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'BarberSync API',
+    'DESCRIPTION': 'Privacy-first booking system for barbershops. No customer accounts required - book appointments via reference codes.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
 }
 
 # Static files for production
